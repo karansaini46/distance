@@ -1,0 +1,14 @@
+
+*.iml
+.gradle
+local.properties
+.idea/
+.DS_Store
+build/
+app/build/
+captures/
+.externalNativeBuild
+.cxx
+gradle-8.6-bin.zip
+gradle-8.6/
+jdk-17.0.11+9/
