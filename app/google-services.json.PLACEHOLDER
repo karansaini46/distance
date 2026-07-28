@@ -1,0 +1,19 @@
+WHERE TO GET YOUR google-services.json
+======================================
+1. Go to: console.firebase.google.com
+2. Create a new project (any name)
+3. Click "Add App" → Android
+4. Package name: com.karan.distancewidget
+5. Download google-services.json
+6. Put it in THIS folder (app/)
+7. In Firebase console → Realtime Database → Create Database → Test Mode
+8. Set rules to:
+   {
+     "rules": {
+       ".read": true,
+       ".write": true
+     }
+   }
+9. Delete this .PLACEHOLDER file
+
+DO NOT commit google-services.json to git.
