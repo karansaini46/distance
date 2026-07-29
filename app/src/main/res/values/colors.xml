@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Backgrounds -->
+    <color name="bg_primary">#0A0A0F</color>
+    <color name="bg_surface">#13131A</color>
+    <color name="bg_card">#1C1C26</color>
+
+    <!-- Accents -->
+    <color name="accent_rose">#FF4B8B</color>
+    <color name="accent_violet">#6C63FF</color>
+    <color name="accent_rose_light">#FF6BA8</color>
+    <color name="accent_violet_light">#9C8FFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9999AA</color>
+    <color name="text_muted">#55556A</color>
+
+    <!-- Widget specific -->
+    <color name="widget_bg_start">#CC0D0D16</color>
+    <color name="widget_bg_end">#CC13131F</color>
+    <color name="widget_border">#22FFFFFF</color>
+    <color name="widget_circle_fill">#22FFFFFF</color>
+    <color name="widget_circle_stroke">#55FFFFFF</color>
+
+    <!-- Status -->
+    <color name="status_ok">#4CAF50</color>
+    <color name="status_warn">#FF9800</color>
+    <color name="status_error">#F44336</color>
+</resources>

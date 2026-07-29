@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Distance</string>
+    <string name="widget_description">Live distance between you and your person</string>
+    <string name="widget_photo_description">Latest photo from your partner</string>
+</resources>
