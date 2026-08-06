@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    updatePeriodMillis: Android enforces a minimum of 1800000ms (30 min).
+    Values below this are silently rounded up by the OS.
+    Our actual refresh mechanism is WorkManager (every ~15 min) which
+    broadcasts ACTION_APPWIDGET_UPDATE itself. This XML value is just
+    a fallback in case the worker is killed.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="100dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_distance"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description"/>
