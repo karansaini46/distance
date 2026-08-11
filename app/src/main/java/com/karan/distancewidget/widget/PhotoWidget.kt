@@ -88,17 +88,17 @@ class PhotoWidget : AppWidgetProvider() {
         val partnerId      = Prefs.getPartnerId(context)
         val partnerInitial = Prefs.getPartnerInitial(context)
 
-        // Tap to refresh PendingIntent
-        val refreshIntent = Intent(context, PhotoWidget::class.java).apply {
-            action = ACTION_PHOTO_REFRESH
+        // Tap to open StoryActivity
+        val storyIntent = Intent(context, com.karan.distancewidget.ui.StoryActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val refreshPi = PendingIntent.getBroadcast(
-            context, 1, refreshIntent,
+        val tapPi = PendingIntent.getActivity(
+            context, 1, storyIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         // Show loading state immediately
-        manager.updateAppWidget(widgetId, buildEmptyViews(context, "loading…", refreshPi))
+        manager.updateAppWidget(widgetId, buildEmptyViews(context, "loading…", tapPi))
 
         scope.launch {
             val photoCount = StorageHelper.getCachedPhotoCount(context, partnerId)
@@ -111,7 +111,7 @@ class PhotoWidget : AppWidgetProvider() {
                 val ts      = StorageHelper.getCachedTimestamp(context, partnerId)
                 val timeAgo = StorageHelper.photoTimeAgo(ts)
                 val slideInfo = if (photoCount > 1) " • ${index + 1}/$photoCount" else ""
-                val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", refreshPi)
+                val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", tapPi)
                 manager.updateAppWidget(widgetId, views)
             } else {
                 // No cached photos — try downloading from Firebase
@@ -121,11 +121,11 @@ class PhotoWidget : AppWidgetProvider() {
                     val ts      = StorageHelper.getCachedTimestamp(context, partnerId)
                     val timeAgo = StorageHelper.photoTimeAgo(ts)
                     val slideInfo = if (downloaded > 1) " • 1/$downloaded" else ""
-                    val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", refreshPi)
+                    val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", tapPi)
                     manager.updateAppWidget(widgetId, views)
                 } else {
                     manager.updateAppWidget(widgetId,
-                        buildEmptyViews(context, "waiting for $partnerInitial…", refreshPi))
+                        buildEmptyViews(context, "waiting for $partnerInitial…", tapPi))
                 }
             }
         }
@@ -136,7 +136,7 @@ class PhotoWidget : AppWidgetProvider() {
         bitmap: Bitmap?,
         partnerInitial: String,
         timeAgo: String,
-        refreshPi: PendingIntent
+        tapPi: PendingIntent
     ): RemoteViews {
         return RemoteViews(context.packageName, R.layout.widget_photo).apply {
             if (bitmap != null) {
@@ -152,22 +152,22 @@ class PhotoWidget : AppWidgetProvider() {
             setTextViewText(R.id.tv_from,    "from $partnerInitial")
             setTextViewText(R.id.tv_time_ago, timeAgo)
             setTextViewText(R.id.tv_empty,    "waiting for $partnerInitial…")
-            setOnClickPendingIntent(R.id.widget_photo_root, refreshPi)
+            setOnClickPendingIntent(R.id.widget_photo_root, tapPi)
         }
     }
 
     private fun buildEmptyViews(
         context: Context,
         message: String,
-        refreshPi: PendingIntent? = null
+        tapPi: PendingIntent? = null
     ): RemoteViews {
         return RemoteViews(context.packageName, R.layout.widget_photo).apply {
             setViewVisibility(R.id.iv_photo,   android.view.View.GONE)
             setViewVisibility(R.id.ll_overlay, android.view.View.GONE)
             setViewVisibility(R.id.ll_empty,   android.view.View.VISIBLE)
             setTextViewText(R.id.tv_empty, message)
-            if (refreshPi != null) {
-                setOnClickPendingIntent(R.id.widget_photo_root, refreshPi)
+            if (tapPi != null) {
+                setOnClickPendingIntent(R.id.widget_photo_root, tapPi)
             }
         }
     }

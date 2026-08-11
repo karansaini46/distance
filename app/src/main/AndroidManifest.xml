@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".DistanceApp"
@@ -25,6 +27,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.StoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DistanceWidget"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Home screen widget receiver -->
         <receiver

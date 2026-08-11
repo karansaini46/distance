@@ -4,10 +4,37 @@ import android.location.Location
 import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.ValueEventListener
 
 object FirebaseHelper {
 
     private val db = Firebase.database.reference
+
+    fun pingPartnerForLocation(partnerId: String) {
+        db.child("requests").child(partnerId).child("ping").setValue(System.currentTimeMillis())
+    }
+
+    fun listenForPings(myId: String, onPingReceived: () -> Unit) {
+        val ref = db.child("requests").child(myId).child("ping")
+        ref.addValueEventListener(object : ValueEventListener {
+            private var firstCall = true
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (firstCall) {
+                    firstCall = false
+                    return
+                }
+                if (snapshot.exists()) {
+                    onPingReceived()
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
 
     /**
      * Push this user's coords to Firebase.
@@ -100,4 +127,48 @@ object FirebaseHelper {
             else           -> "${minutes / 1440}d ago"
         }
     }
+
+    /**
+     * Send a comment for a specific photo index.
+     */
+    suspend fun sendComment(fromId: String, toId: String, photoIndex: Int, text: String): Boolean {
+        return try {
+            val commentId = db.child("comments").child("${toId}_to_${fromId}").child(photoIndex.toString()).push().key ?: return false
+            val commentData = mapOf(
+                "text" to text,
+                "ts" to System.currentTimeMillis()
+            )
+            db.child("comments").child("${toId}_to_${fromId}").child(photoIndex.toString()).child(commentId).setValue(commentData).await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Observe comments for a specific photo index.
+     */
+    fun getComments(fromId: String, toId: String, photoIndex: Int): Flow<List<CommentData>> = callbackFlow {
+        val ref = db.child("comments").child("${fromId}_to_${toId}").child(photoIndex.toString())
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val comments = mutableListOf<CommentData>()
+                for (child in snapshot.children) {
+                    val text = child.child("text").getValue(String::class.java) ?: continue
+                    val ts = child.child("ts").getValue(Long::class.java) ?: 0L
+                    comments.add(CommentData(text, ts))
+                }
+                comments.sortBy { it.ts }
+                trySend(comments)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // Ignore
+            }
+        }
+        ref.addValueEventListener(listener)
+        awaitClose { ref.removeEventListener(listener) }
+    }
 }
+
+data class CommentData(val text: String, val ts: Long)

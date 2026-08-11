@@ -12,6 +12,7 @@ object Prefs {
     
     private const val KEY_WIDGET_OPACITY = "widget_opacity"
     private const val KEY_WIDGET_ANIM    = "widget_anim"
+    private const val KEY_CHAT_THEME     = "chat_theme"
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -56,5 +57,14 @@ object Prefs {
 
     fun setWidgetAnimationEnabled(ctx: Context, enabled: Boolean) {
         prefs(ctx).edit().putBoolean(KEY_WIDGET_ANIM, enabled).apply()
+    }
+
+    // ── Chat Customization ──────────────────────────────────────────────
+
+    fun getChatTheme(ctx: Context): String =
+        prefs(ctx).getString(KEY_CHAT_THEME, "MidnightBlue") ?: "MidnightBlue"
+
+    fun setChatTheme(ctx: Context, themeName: String) {
+        prefs(ctx).edit().putString(KEY_CHAT_THEME, themeName).apply()
     }
 }

@@ -11,6 +11,11 @@ import kotlinx.coroutines.tasks.await
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
+import android.os.Build
 
 object StorageHelper {
 
@@ -75,9 +80,16 @@ object StorageHelper {
         return uploadMultiplePhotos(context, listOf(uri), userId)
     }
 
+    fun encodeToBase64(context: Context, uri: Uri): String? {
+        val bitmap = compressBitmap(context, uri) ?: return null
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+        val bytes = out.toByteArray()
+        return Base64.encodeToString(bytes, Base64.DEFAULT)
+    }
+
     /**
      * Read and compress bitmap from a content Uri.
-     * Max 1800px on longest side, JPEG 95% — best quality for free RTDB.
      */
     private fun compressBitmap(context: Context, uri: Uri): Bitmap? {
         return try {
@@ -265,6 +277,42 @@ object StorageHelper {
             minutes < 60   -> "${minutes}m ago"
             minutes < 1440 -> "${minutes / 60}h ago"
             else           -> "${minutes / 1440}d ago"
+        }
+    }
+
+    /**
+     * Save a temporary photo file to the public device gallery (Pictures folder).
+     * Uses MediaStore API which doesn't require WRITE_EXTERNAL_STORAGE on Android 10+.
+     */
+    fun savePhotoToGallery(context: Context, photoFile: File): Boolean {
+        return try {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, photoFile.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Distance")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                ?: return false
+
+            resolver.openOutputStream(uri)?.use { outputStream ->
+                FileInputStream(photoFile).use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            }
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 }

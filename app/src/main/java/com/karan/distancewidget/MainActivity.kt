@@ -13,6 +13,11 @@ import com.karan.distancewidget.ui.MainScreen
 import com.karan.distancewidget.ui.SetupScreen
 import com.karan.distancewidget.ui.theme.DistanceWidgetTheme
 import com.karan.distancewidget.util.WorkerScheduler
+import com.karan.distancewidget.data.FirebaseHelper
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import com.karan.distancewidget.worker.LocationWorker
 
 class MainActivity : ComponentActivity() {
 
@@ -21,6 +26,16 @@ class MainActivity : ComponentActivity() {
 
         // Schedule background worker every time the app opens
         WorkerScheduler.schedule(this)
+
+        // Listen for live location pings
+        val myId = Prefs.getUserId(this)
+        if (myId != null) {
+            FirebaseHelper.listenForPings(myId) {
+                val data = Data.Builder().putBoolean("force_fresh", true).build()
+                val oneTime = OneTimeWorkRequestBuilder<LocationWorker>().setInputData(data).build()
+                WorkManager.getInstance(this).enqueue(oneTime)
+            }
+        }
 
         // Edge-to-edge: let Compose handle system bar insets via systemBarsPadding()
         WindowCompat.setDecorFitsSystemWindows(window, false)
