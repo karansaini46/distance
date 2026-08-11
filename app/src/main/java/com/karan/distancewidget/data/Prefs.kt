@@ -9,6 +9,9 @@ object Prefs {
     private const val KEY_USER_ID    = "user_id"
     private const val KEY_MY_INITIAL = "my_initial"
     private const val KEY_PT_INITIAL = "partner_initial"
+    
+    private const val KEY_WIDGET_OPACITY = "widget_opacity"
+    private const val KEY_WIDGET_ANIM    = "widget_anim"
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -37,5 +40,21 @@ object Prefs {
 
     fun clear(ctx: Context) {
         prefs(ctx).edit().clear().apply()
+    }
+
+    // ── Widget Customization ────────────────────────────────────────────
+
+    fun getWidgetOpacity(ctx: Context): Int =
+        prefs(ctx).getInt(KEY_WIDGET_OPACITY, 100) // 100% opacity by default
+
+    fun setWidgetOpacity(ctx: Context, opacity: Int) {
+        prefs(ctx).edit().putInt(KEY_WIDGET_OPACITY, opacity.coerceIn(0, 100)).apply()
+    }
+
+    fun isWidgetAnimationEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(KEY_WIDGET_ANIM, true)
+
+    fun setWidgetAnimationEnabled(ctx: Context, enabled: Boolean) {
+        prefs(ctx).edit().putBoolean(KEY_WIDGET_ANIM, enabled).apply()
     }
 }

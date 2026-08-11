@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.CheckCircle
@@ -44,6 +45,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -98,6 +103,21 @@ fun MainScreen(onReset: () -> Unit = {}) {
     val userId  = Prefs.getUserId(context) ?: return
     val partnerId = Prefs.getPartnerId(context)
     var partnerLocation by remember { mutableStateOf<LocationData?>(null) }
+
+    var widgetOpacity by remember { mutableStateOf(Prefs.getWidgetOpacity(context).toFloat()) }
+    var widgetAnim by remember { mutableStateOf(Prefs.isWidgetAnimationEnabled(context)) }
+
+    fun notifyWidget() {
+        val mgr = android.appwidget.AppWidgetManager.getInstance(context)
+        val ids = mgr.getAppWidgetIds(android.content.ComponentName(context, com.karan.distancewidget.widget.DistanceWidget::class.java))
+        if (ids.isNotEmpty()) {
+            val intent = Intent(context, com.karan.distancewidget.widget.DistanceWidget::class.java).apply {
+                action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+            }
+            context.sendBroadcast(intent)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (partnerId != null) {
@@ -188,39 +208,78 @@ fun MainScreen(onReset: () -> Unit = {}) {
                         }
                     }
 
-                    if (partnerId != null && partnerLocation != null) {
-                        IconButton(
-                            onClick = {
-                                val loc = partnerLocation
-                                if (loc != null) {
-                                    val uri = Uri.parse("geo:${loc.lat},${loc.lng}?q=${loc.lat},${loc.lng}(${partnerId.replaceFirstChar { it.uppercase() }})")
-                                    val intent = Intent(Intent.ACTION_VIEW, uri)
-                                    // Try opening in Google Maps first, fallback to any map app
-                                    intent.setPackage("com.google.android.apps.maps")
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        intent.setPackage(null)
-                                        try {
-                                            context.startActivity(intent)
-                                        } catch (e2: Exception) {
-                                            // No map app found
-                                        }
-                                    }
+                    IconButton(
+                        onClick = {
+                            val loc = partnerLocation
+                            if (loc != null) {
+                                val uri = Uri.parse("geo:${loc.lat},${loc.lng}?q=${loc.lat},${loc.lng}(${partnerId.replaceFirstChar { it.uppercase() }})")
+                                val intent = Intent(Intent.ACTION_VIEW, uri)
+                                intent.setPackage("com.google.android.apps.maps")
+                                try {
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    intent.setPackage(null)
+                                    try { context.startActivity(intent) } catch (_: Exception) {}
                                 }
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(BgSurface)
-                        ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = "View Partner on Map", tint = AccentRose, modifier = Modifier.size(18.dp))
-                        }
+                            }
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(BgSurface)
+                    ) {
+                        Icon(Icons.Default.LocationOn, contentDescription = "Partner location", tint = AccentRose, modifier = Modifier.size(18.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Widget updates every ~15 min in background.",
                     color = TextSecondary, fontSize = 13.sp)
+            }
+
+            // ── Widget Customization ──────────────────────────────────────────
+            GlassCard {
+                Text("Widget UI Customization", color = TextMuted, fontSize = 12.sp)
+                Spacer(Modifier.height(16.dp))
+
+                // Animation Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Cute Beating Animation", color = TextPrimary, fontSize = 15.sp)
+                    Switch(
+                        checked = widgetAnim,
+                        onCheckedChange = { 
+                            widgetAnim = it
+                            Prefs.setWidgetAnimationEnabled(context, it)
+                            notifyWidget()
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AccentRose,
+                            checkedTrackColor = AccentRose.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Transparency Slider
+                Text("Widget Transparency (${widgetOpacity.toInt()}%)", color = TextPrimary, fontSize = 15.sp)
+                Slider(
+                    value = widgetOpacity,
+                    onValueChange = { widgetOpacity = it },
+                    onValueChangeFinished = {
+                        Prefs.setWidgetOpacity(context, widgetOpacity.toInt())
+                        notifyWidget()
+                    },
+                    valueRange = 10f..100f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = AccentRose,
+                        activeTrackColor = AccentRose,
+                        inactiveTrackColor = TextSecondary.copy(alpha = 0.3f)
+                    )
+                )
             }
 
             // ── Permissions Card ───────────────────────────────────────
@@ -283,42 +342,54 @@ fun MainScreen(onReset: () -> Unit = {}) {
             }
 
             // ── Photo Section Card ────────────────────────────────────────────────────
-            var uploading   by remember { mutableStateOf(false) }
-            var uploadMsg   by remember { mutableStateOf("") }
-            var lastSentTs  by remember { mutableStateOf(0L) }
+            var uploading    by remember { mutableStateOf(false) }
+            var uploadMsg    by remember { mutableStateOf("") }
+            var uploadProgress by remember { mutableStateOf("") }
+            var lastSentTs   by remember { mutableStateOf(0L) }
+            var sentCount    by remember { mutableStateOf(0) }
 
-            // Load last sent timestamp from Firebase on first composition
+            // Load last sent metadata from Firebase on first composition
             LaunchedEffect(Unit) {
                 val myId = Prefs.getUserId(context) ?: return@LaunchedEffect
-                lastSentTs = try {
-                    val snap = Firebase.database.reference
+                try {
+                    val tsSnap = Firebase.database.reference
                         .child("photos").child("${myId}_ts").get().await()
-                    snap.getValue(Long::class.java) ?: 0L
-                } catch (e: Exception) { 0L }
+                    lastSentTs = tsSnap.getValue(Long::class.java) ?: 0L
+
+                    val countSnap = Firebase.database.reference
+                        .child("photos").child("${myId}_count").get().await()
+                    sentCount = countSnap.getValue(Int::class.java) ?: 0
+                } catch (_: Exception) {}
             }
 
-            // System photo picker — no permissions required on Android 11+
+            // Multi-photo picker — select up to 10 photos
             val photoPicker = rememberLauncherForActivityResult(
-                ActivityResultContracts.PickVisualMedia()
-            ) { uri ->
-                if (uri == null) return@rememberLauncherForActivityResult
+                ActivityResultContracts.PickMultipleVisualMedia(10)
+            ) { uris ->
+                if (uris.isEmpty()) return@rememberLauncherForActivityResult
                 uploading  = true
                 uploadMsg  = ""
+                uploadProgress = "Sending ${uris.size} photo${if (uris.size > 1) "s" else ""}…"
                 val myId   = Prefs.getUserId(context) ?: return@rememberLauncherForActivityResult
 
-                // Launch upload coroutine
                 CoroutineScope(Dispatchers.IO).launch {
-                    val success = StorageHelper.uploadPhoto(context, uri, myId)
+                    val success = StorageHelper.uploadMultiplePhotos(context, uris, myId)
                     withContext(Dispatchers.Main) {
                         uploading  = false
-                        uploadMsg  = if (success) "Sent! ♡" else "Upload failed — check internet"
-                        if (success) lastSentTs = System.currentTimeMillis()
+                        uploadProgress = ""
+                        if (success) {
+                            uploadMsg  = "Sent ${uris.size} photo${if (uris.size > 1) "s" else ""}! ♡"
+                            lastSentTs = System.currentTimeMillis()
+                            sentCount  = uris.size
+                        } else {
+                            uploadMsg  = "Upload failed — check internet"
+                        }
                     }
                 }
             }
 
             GlassCard {
-                Text("Send a photo", color = TextMuted, fontSize = 12.sp)
+                Text("Send photos", color = TextMuted, fontSize = 12.sp)
                 Spacer(Modifier.height(12.dp))
 
                 Row(
@@ -328,7 +399,8 @@ fun MainScreen(onReset: () -> Unit = {}) {
                 ) {
                     Column {
                         Text(
-                            text       = "Last sent",
+                            text       = if (sentCount > 0) "$sentCount photo${if (sentCount > 1) "s" else ""} sent"
+                                         else "No photos sent yet",
                             color      = TextSecondary,
                             fontSize   = 13.sp
                         )
@@ -357,11 +429,11 @@ fun MainScreen(onReset: () -> Unit = {}) {
                                 strokeWidth = 2.dp
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Sending…")
+                            Text(uploadProgress.ifEmpty { "Sending…" })
                         } else {
                             Icon(Icons.Default.AddAPhoto, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Send Photo")
+                            Text("Send Photos")
                         }
                     }
                 }
@@ -393,7 +465,9 @@ fun MainScreen(onReset: () -> Unit = {}) {
                     if (!syncing) {
                         syncing = true
                         WorkManager.getInstance(context)
-                            .enqueue(OneTimeWorkRequestBuilder<LocationWorker>().build())
+                            .enqueue(OneTimeWorkRequestBuilder<LocationWorker>()
+                                .setInputData(androidx.work.workDataOf("force_fresh" to true))
+                                .build())
                     }
                 },
                 modifier = Modifier

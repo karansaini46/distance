@@ -48,31 +48,44 @@ class LocationWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
     /**
      * Gets the best available location.
      * Strategy:
-     *   1. lastLocation  → fast, battery-free, may be null
-     *   2. getCurrentLocation → fresh fix, up to 12s, may also be null
+     *   1. getCurrentLocation (HIGH_ACCURACY) → always try a fresh GPS fix first
+     *   2. lastLocation fallback → only if fresh fix fails AND cache is < 60s old
      *   3. null → caller returns Result.retry()
+     *
+     * This guarantees that every update pushes a genuinely current position
+     * rather than a potentially 15-minute-stale cached one.
      */
     private suspend fun getBestLocation(): android.location.Location? {
         val client = LocationServices.getFusedLocationProviderClient(applicationContext)
+        val forceFresh = inputData.getBoolean("force_fresh", false)
 
-        // Attempt 1: cached location (instant, no battery)
-        val last = try { client.lastLocation.await() } catch (e: Exception) { null }
-        if (last != null) return last
-
-        // Attempt 2: fresh fix (getCurrentLocation can still succeed-with-null,
-        // which is documented behaviour — treat null response as failure)
-        return try {
-            withTimeoutOrNull(12_000L) {
+        // ── Attempt 1: fresh GPS fix (always HIGH_ACCURACY for real-time precision) ──
+        val freshLocation = try {
+            withTimeoutOrNull(15_000L) {
                 val tokenSource = CancellationTokenSource()
                 val result = client.getCurrentLocation(
-                    Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    Priority.PRIORITY_HIGH_ACCURACY,
                     tokenSource.token
                 ).await()
-                result  // may be null — that's fine, withTimeoutOrNull returns null too
+                result  // may be null — documented behaviour
             }
         } catch (e: Exception) {
             null
         }
+
+        if (freshLocation != null) return freshLocation
+
+        // ── Attempt 2: cached location fallback ──────────────────────────
+        // Only accept cached location if it's very recent (< 60 seconds).
+        // For force_fresh (widget tap), skip cache entirely — return null to retry.
+        if (forceFresh) return null
+
+        val last = try { client.lastLocation.await() } catch (e: Exception) { null }
+        if (last != null && System.currentTimeMillis() - last.time < 60_000L) {
+            return last
+        }
+
+        return null
     }
 
     private fun triggerWidgetUpdate() {

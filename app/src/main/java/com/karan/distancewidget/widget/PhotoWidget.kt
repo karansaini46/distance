@@ -23,9 +23,26 @@ class PhotoWidget : AppWidgetProvider() {
 
     companion object {
         const val ACTION_PHOTO_REFRESH = "com.karan.distancewidget.ACTION_PHOTO_REFRESH"
+        private const val PREFS_NAME   = "photo_widget_slideshow"
 
         private val job   = SupervisorJob()
         private val scope = CoroutineScope(job + Dispatchers.IO)
+
+        /** Get the current slideshow index for a widget. */
+        private fun getIndex(context: Context, widgetId: Int): Int {
+            return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getInt("idx_$widgetId", 0)
+        }
+
+        /** Save and advance the slideshow index, wrapping around. */
+        private fun advanceIndex(context: Context, widgetId: Int, photoCount: Int): Int {
+            if (photoCount <= 0) return 0
+            val current = getIndex(context, widgetId)
+            val next = (current + 1) % photoCount
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putInt("idx_$widgetId", next).apply()
+            return current
+        }
     }
 
     override fun onDisabled(context: Context) {
@@ -33,10 +50,18 @@ class PhotoWidget : AppWidgetProvider() {
         job.cancel()
     }
 
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        // Clean up slideshow prefs for removed widgets
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        appWidgetIds.forEach { prefs.remove("idx_$it") }
+        prefs.apply()
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_PHOTO_REFRESH) {
-            // Immediate one-time sync
+            // Immediate one-time sync, then widget redraws via PhotoSyncWorker
             WorkManager.getInstance(context)
                 .enqueue(OneTimeWorkRequestBuilder<PhotoSyncWorker>().build())
         }
@@ -60,8 +85,8 @@ class PhotoWidget : AppWidgetProvider() {
             return
         }
 
-        val partnerId      = Prefs.getPartnerId(context) ?: return
-        val partnerInitial = Prefs.getPartnerInitial(context) ?: "?"
+        val partnerId      = Prefs.getPartnerId(context)
+        val partnerInitial = Prefs.getPartnerInitial(context)
 
         // Tap to refresh PendingIntent
         val refreshIntent = Intent(context, PhotoWidget::class.java).apply {
@@ -76,23 +101,27 @@ class PhotoWidget : AppWidgetProvider() {
         manager.updateAppWidget(widgetId, buildEmptyViews(context, "loading…", refreshPi))
 
         scope.launch {
-            // Try cached bitmap first (fast path — no network needed)
-            val bitmap = StorageHelper.loadCachedBitmap(context, partnerId)
+            val photoCount = StorageHelper.getCachedPhotoCount(context, partnerId)
 
-            if (bitmap != null) {
+            if (photoCount > 0) {
+                // Pick the current slideshow photo and advance index
+                val index  = advanceIndex(context, widgetId, photoCount)
+                val bitmap = StorageHelper.loadCachedBitmap(context, partnerId, index)
+
                 val ts      = StorageHelper.getCachedTimestamp(context, partnerId)
                 val timeAgo = StorageHelper.photoTimeAgo(ts)
-                val views   = buildPhotoViews(context, bitmap, partnerInitial, timeAgo, refreshPi)
+                val slideInfo = if (photoCount > 1) " • ${index + 1}/$photoCount" else ""
+                val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", refreshPi)
                 manager.updateAppWidget(widgetId, views)
             } else {
-                // No cached photo — check Firebase for a new one
-                val downloaded = StorageHelper.downloadPartnerPhoto(context, partnerId)
-                if (downloaded != null) {
-                    val freshBitmap = StorageHelper.loadCachedBitmap(context, partnerId)
-                    val ts          = StorageHelper.getCachedTimestamp(context, partnerId)
-                    val timeAgo     = StorageHelper.photoTimeAgo(ts)
-                    val views       = buildPhotoViews(context,
-                        freshBitmap, partnerInitial, timeAgo, refreshPi)
+                // No cached photos — try downloading from Firebase
+                val downloaded = StorageHelper.downloadAllPartnerPhotos(context, partnerId)
+                if (downloaded > 0) {
+                    val bitmap  = StorageHelper.loadCachedBitmap(context, partnerId, 0)
+                    val ts      = StorageHelper.getCachedTimestamp(context, partnerId)
+                    val timeAgo = StorageHelper.photoTimeAgo(ts)
+                    val slideInfo = if (downloaded > 1) " • 1/$downloaded" else ""
+                    val views   = buildPhotoViews(context, bitmap, partnerInitial, "$timeAgo$slideInfo", refreshPi)
                     manager.updateAppWidget(widgetId, views)
                 } else {
                     manager.updateAppWidget(widgetId,

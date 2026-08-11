@@ -1,92 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="16dp"
-    android:background="@drawable/widget_bg">
+    android:layout_height="wrap_content">
 
-    <!-- Distance label -->
-    <TextView
-        android:id="@+id/tv_distance"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="--- km apart"
-        android:textColor="#FFFFFF"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.03"
-        android:layout_marginBottom="12dp"/>
+    <!-- Background image for transparency control -->
+    <ImageView
+        android:id="@+id/widget_bg_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_bg_wide"
+        android:scaleType="fitXY" />
 
-    <!-- B ...heart... C row -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp">
 
-        <TextView
-            android:id="@+id/tv_my_initial"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:gravity="center"
-            android:text="?"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:background="@drawable/circle_bg"/>
-
-        <TextView
-            android:id="@+id/tv_dash_left"
+        <!-- Left: Initials and Emoji -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="- - -"
-            android:textColor="#66FFFFFF"
-            android:textSize="11sp"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="4dp"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <ImageView
-            android:id="@+id/iv_heart"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:src="@drawable/ic_heart"
-            android:layout_marginHorizontal="2dp"/>
+            <TextView
+                android:id="@+id/tv_my_initial"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:gravity="center"
+                android:text="?"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:background="@drawable/circle_bg"/>
 
-        <TextView
-            android:id="@+id/tv_dash_right"
+            <!-- Static Emoji (when animation is OFF) -->
+            <TextView
+                android:id="@+id/tv_emoji_static"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="❤️"
+                android:textSize="16sp"
+                android:visibility="gone"/>
+
+            <!-- Cute animation ViewFlipper (when animation is ON) -->
+            <ViewFlipper
+                android:id="@+id/view_flipper_emoji"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:autoStart="true"
+                android:flipInterval="1000">
+                
+                <TextView
+                    android:id="@+id/tv_emoji_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="❤️"
+                    android:textSize="16sp"/>
+                    
+                <TextView
+                    android:id="@+id/tv_emoji_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="❤️"
+                    android:textSize="12sp"/>
+            </ViewFlipper>
+
+            <TextView
+                android:id="@+id/tv_partner_initial"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:gravity="center"
+                android:text="?"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:background="@drawable/circle_bg"/>
+        </LinearLayout>
+
+        <!-- Spacer -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
+        <!-- Right: Distance Data -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="- - -"
-            android:textColor="#66FFFFFF"
-            android:textSize="11sp"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="6dp"/>
+            android:orientation="vertical"
+            android:gravity="end">
 
-        <TextView
-            android:id="@+id/tv_partner_initial"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:gravity="center"
-            android:text="?"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:background="@drawable/circle_bg"/>
+            <TextView
+                android:id="@+id/tv_distance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--- km"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.02"/>
 
+            <TextView
+                android:id="@+id/tv_last_updated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="syncing…"
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp"
+                android:layout_marginTop="2dp"/>
+        </LinearLayout>
     </LinearLayout>
-
-    <!-- Subtitle: "live ♡" or "last seen Xm ago" -->
-    <TextView
-        android:id="@+id/tv_last_updated"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="syncing…"
-        android:textColor="#66FFFFFF"
-        android:textSize="10sp"
-        android:layout_marginTop="8dp"/>
-
-</LinearLayout>
+</FrameLayout>

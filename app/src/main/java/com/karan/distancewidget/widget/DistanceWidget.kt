@@ -25,6 +25,11 @@ class DistanceWidget : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "com.karan.distancewidget.ACTION_REFRESH"
 
+        // Flag to indicate the next widget update should bypass Firebase cache.
+        // Set when user taps refresh, consumed after the update completes.
+        @Volatile
+        private var forceServerFetch = false
+
         // Single scope shared across all widget update calls.
         // SupervisorJob: one failed coroutine doesn't cancel siblings.
         private var job   = SupervisorJob()
@@ -56,8 +61,11 @@ class DistanceWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)   // MUST come first
         if (intent.action == ACTION_REFRESH) {
+            // Mark that the next Firebase read should bypass offline cache
+            forceServerFetch = true
             // Run an immediate one-time sync then let the result trigger onUpdate
-            val oneTime = OneTimeWorkRequestBuilder<LocationWorker>().build()
+            val data = androidx.work.workDataOf("force_fresh" to true)
+            val oneTime = OneTimeWorkRequestBuilder<LocationWorker>().setInputData(data).build()
             WorkManager.getInstance(context).enqueue(oneTime)
         }
     }
@@ -104,32 +112,48 @@ class DistanceWidget : AppWidgetProvider() {
         // ── Async: fetch both locations then update ────────────────────
         scope.launch {
             try {
-                val myLoc      = FirebaseHelper.getLocation(myId)
-                val partnerLoc = FirebaseHelper.getLocation(partnerId)
+                // Consume the force flag — bypass Firebase cache if user tapped refresh
+                val serverFresh = forceServerFetch
+                forceServerFetch = false
 
-                val (distance, subtitle, isClose) = when {
-                    myLoc == null -> Triple("tap to refresh", "your location missing", false)
+                val myLoc      = FirebaseHelper.getLocation(myId, forceServer = serverFresh)
+                val partnerLoc = FirebaseHelper.getLocation(partnerId, forceServer = serverFresh)
 
-                    partnerLoc == null -> Triple(
-                        "waiting for $partnerInitial…",
-                        "partner hasn't synced yet",
-                        false
-                    )
+                var distanceText = "loading..."
+                var subtitleText = "syncing"
+                var isClose = false
+                var emoji = "❤️"
 
-                    else -> {
-                        val km       = FirebaseHelper.distanceKm(myLoc, partnerLoc)
-                        val isClose  = km <= 0.05
-                        val distText = if (isClose) "Together! ❤️" else FirebaseHelper.formatDistance(km)
-                        val subtitle = if (FirebaseHelper.isStale(partnerLoc.ts))
-                            "last seen ${FirebaseHelper.timeAgo(partnerLoc.ts)}"
-                        else
-                            "live ♡"
-                        Triple(distText, subtitle, isClose)
+                if (myLoc == null) {
+                    distanceText = "tap to refresh"
+                    subtitleText = "your location missing"
+                    emoji = "❓"
+                } else if (partnerLoc == null) {
+                    distanceText = "waiting for $partnerInitial…"
+                    subtitleText = "partner hasn't synced yet"
+                    emoji = "⏳"
+                } else {
+                    val km = FirebaseHelper.distanceKm(myLoc, partnerLoc)
+                    isClose = km <= 0.05
+                    distanceText = if (isClose) "Together!" else FirebaseHelper.formatDistance(km)
+                    subtitleText = if (FirebaseHelper.isStale(partnerLoc.ts))
+                        "last seen ${FirebaseHelper.timeAgo(partnerLoc.ts)}"
+                    else
+                        "live ♡"
+
+                    emoji = when {
+                        km <= 0.05 -> "🥰"
+                        km <= 0.2  -> "😍"
+                        km <= 0.35 -> "❤️"
+                        km <= 0.5  -> "💖"
+                        km <= 10.0 -> "🥺"
+                        km <= 500.0 -> "😢"
+                        else -> "😭"
                     }
                 }
 
                 manager.updateAppWidget(widgetId, buildViews(context,
-                    myInitial, partnerInitial, distance, subtitle, refreshPi, isClose))
+                    myInitial, partnerInitial, distanceText, subtitleText, refreshPi, emoji, isClose))
 
             } catch (e: Exception) {
                 manager.updateAppWidget(widgetId, buildViews(context,
@@ -146,6 +170,7 @@ class DistanceWidget : AppWidgetProvider() {
         distanceText: String,
         subtitle: String,
         refreshPi: PendingIntent,
+        emoji: String = "❤️",
         isClose: Boolean = false
     ): RemoteViews {
         return RemoteViews(context.packageName, R.layout.widget_distance).apply {
@@ -155,10 +180,26 @@ class DistanceWidget : AppWidgetProvider() {
             setTextViewText(R.id.tv_last_updated,    subtitle)
             setOnClickPendingIntent(R.id.widget_root, refreshPi)
 
-            // Hide dashes when close so initials merge together near the heart
-            val dashVisibility = if (isClose) android.view.View.GONE else android.view.View.VISIBLE
-            setViewVisibility(R.id.tv_dash_left, dashVisibility)
-            setViewVisibility(R.id.tv_dash_right, dashVisibility)
+            // Apply Customizations
+            val animEnabled = Prefs.isWidgetAnimationEnabled(context)
+            val opacityPercent = Prefs.getWidgetOpacity(context)
+
+            // 1. Transparency (using View.setAlpha which is safer in RemoteViews)
+            val alphaFloat = opacityPercent / 100f
+            setFloat(R.id.widget_bg_image, "setAlpha", alphaFloat)
+
+            // 2. Emoji & Animation
+            setTextViewText(R.id.tv_emoji_static, emoji)
+            setTextViewText(R.id.tv_emoji_1, emoji)
+            setTextViewText(R.id.tv_emoji_2, emoji)
+
+            if (animEnabled) {
+                setViewVisibility(R.id.tv_emoji_static, android.view.View.GONE)
+                setViewVisibility(R.id.view_flipper_emoji, android.view.View.VISIBLE)
+            } else {
+                setViewVisibility(R.id.tv_emoji_static, android.view.View.VISIBLE)
+                setViewVisibility(R.id.view_flipper_emoji, android.view.View.GONE)
+            }
         }
     }
 }

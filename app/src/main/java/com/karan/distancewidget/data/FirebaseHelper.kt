@@ -26,14 +26,32 @@ object FirebaseHelper {
 
     /**
      * Fetch a user's last known location from Firebase.
-     * Calls keepSynced(true) so offline cache is used when network is unavailable.
-     * Returns null if the user has never synced or on any error.
+     * @param forceServer When true, bypasses Firebase's offline cache to get
+     *                    a guaranteed server-fresh read (used during widget tap refresh).
      */
-    suspend fun getLocation(userId: String): LocationData? {
+    suspend fun getLocation(userId: String, forceServer: Boolean = false): LocationData? {
         return try {
             val ref = db.child("users").child(userId)
             ref.keepSynced(true)
-            val snap = ref.get().await()
+
+            val snap = if (forceServer) {
+                // addListenerForSingleValueEvent + onCancelled gives a
+                // guaranteed server round-trip when the device is online.
+                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                    ref.addListenerForSingleValueEvent(object :
+                        com.google.firebase.database.ValueEventListener {
+                        override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                            cont.resume(snapshot, null)
+                        }
+                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+                            cont.resume(null, null)
+                        }
+                    })
+                } ?: return null
+            } else {
+                ref.get().await()
+            }
+
             val lat = snap.child("lat").getValue(Double::class.java) ?: return null
             val lng = snap.child("lng").getValue(Double::class.java) ?: return null
             val ts  = snap.child("ts").getValue(Long::class.java)   ?: 0L

@@ -15,13 +15,13 @@ class PhotoSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         if (!Prefs.isSetup(applicationContext)) return Result.failure()
 
-        val partnerId = Prefs.getPartnerId(applicationContext) ?: return Result.failure()
+        val partnerId = Prefs.getPartnerId(applicationContext)
 
         return try {
-            // Download partner's photo (skips if already cached and up to date)
-            StorageHelper.downloadPartnerPhoto(applicationContext, partnerId)
+            // Download all partner photos (skips if already cached and up to date)
+            StorageHelper.downloadAllPartnerPhotos(applicationContext, partnerId)
 
-            // Tell PhotoWidget to redraw
+            // Tell PhotoWidget to redraw (advances slideshow)
             triggerPhotoWidgetUpdate()
 
             Result.success()
