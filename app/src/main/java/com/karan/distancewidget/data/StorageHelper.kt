@@ -39,13 +39,14 @@ object StorageHelper {
         context: Context,
         uris: List<Uri>,
         userId: String
-    ): Boolean {
-        if (uris.isEmpty()) return false
+    ): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (uris.isEmpty()) return@withContext false
         val photos = uris.take(MAX_PHOTOS)
 
-        return try {
+        return@withContext try {
             val updates = mutableMapOf<String, Any>()
 
+            var uploadedCount = 0
             for ((index, uri) in photos.withIndex()) {
                 val bitmap = compressBitmap(context, uri) ?: continue
                 val bytes = ByteArrayOutputStream().also { out ->
@@ -53,17 +54,19 @@ object StorageHelper {
                 }.toByteArray()
                 val base64 = Base64.encodeToString(bytes, Base64.DEFAULT)
 
-                updates["photos/$userId/images/$index"] = base64
+                updates["photos/$userId/images/$uploadedCount"] = base64
+                uploadedCount++
             }
+            
+            if (uploadedCount == 0) return@withContext false
 
             // Remove old photos beyond new count
-            val newCount = photos.size
-            for (i in newCount until MAX_PHOTOS) {
+            for (i in uploadedCount until MAX_PHOTOS) {
                 updates["photos/$userId/images/$i"] = "" // clear old slots
             }
 
             // Metadata
-            updates["photos/${userId}_count"] = newCount
+            updates["photos/${userId}_count"] = uploadedCount
             updates["photos/${userId}_ts"]    = System.currentTimeMillis()
 
             db.updateChildren(updates).await()
@@ -91,13 +94,39 @@ object StorageHelper {
     /**
      * Read and compress bitmap from a content Uri.
      */
+    private fun getInputStream(context: Context, uri: Uri): java.io.InputStream? {
+        return if (uri.scheme == "file") {
+            java.io.FileInputStream(java.io.File(uri.path ?: return null))
+        } else {
+            context.contentResolver.openInputStream(uri)
+        }
+    }
+
     private fun compressBitmap(context: Context, uri: Uri): Bitmap? {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val original    = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            getInputStream(context, uri)?.use { 
+                BitmapFactory.decodeStream(it, null, options) 
+            }
+            
             val maxDim = 1800
+            var inSampleSize = 1
+            if (options.outHeight > maxDim || options.outWidth > maxDim) {
+                val halfHeight = options.outHeight / 2
+                val halfWidth = options.outWidth / 2
+                while (halfHeight / inSampleSize >= maxDim && halfWidth / inSampleSize >= maxDim) {
+                    inSampleSize *= 2
+                }
+            }
+            
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            
+            val original = getInputStream(context, uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOptions)
+            } ?: return null
+
             val scale  = minOf(maxDim.toFloat() / original.width,
                                maxDim.toFloat() / original.height, 1f)
             if (scale < 1f) {
@@ -108,7 +137,7 @@ object StorageHelper {
                     true
                 )
             } else original
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
         }
     }

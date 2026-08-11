@@ -33,6 +33,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashAuto
+import androidx.compose.material.icons.filled.Autorenew
 import android.widget.Toast
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -112,10 +116,24 @@ fun StoryScreen(onClose: () -> Unit, onOpenCamera: () -> Unit) {
     val photoCount = remember { StorageHelper.getCachedPhotoCount(context, partnerId) }
     
     if (photoCount == 0) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-            Text("No photos to show.", color = Color.White)
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No photos to show.", color = Color.White)
+            }
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(40.dp)) {
                 Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+            // Add Camera button so user can send the first photo
+            IconButton(
+                onClick = onOpenCamera,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp)
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f))
+            ) {
+                Icon(Icons.Default.CameraAlt, "Camera", tint = Color.White, modifier = Modifier.size(32.dp))
             }
         }
         return
@@ -343,7 +361,6 @@ fun StoryScreen(onClose: () -> Unit, onOpenCamera: () -> Unit) {
 fun CameraScreen(onClose: () -> Unit, onPhotoSent: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     
     var hasCamPermission by remember { 
         mutableStateOf(
@@ -363,25 +380,60 @@ fun CameraScreen(onClose: () -> Unit, onPhotoSent: () -> Unit) {
         }
     }
 
+    val cameraProvider = remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    
+    LaunchedEffect(Unit) {
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            cameraProvider.value = future.get()
+        }, ContextCompat.getMainExecutor(context))
+    }
+
     val imageCapture = remember { ImageCapture.Builder().build() }
     val previewView = remember { PreviewView(context) }
+    var capturedPhoto by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val myId = Prefs.getUserId(context)
+
+    // Camera state
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
+    var flashMode by remember { mutableStateOf(ImageCapture.FLASH_MODE_OFF) }
+
+    // Bind Camera UseCases
+    LaunchedEffect(cameraProvider.value, lensFacing) {
+        val provider = cameraProvider.value ?: return@LaunchedEffect
+        val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(previewView.surfaceProvider)
+        }
+        
+        try {
+            provider.unbindAll()
+            // Check if selected camera is available, fallback if not
+            val finalSelector = if (provider.hasCamera(cameraSelector)) {
+                cameraSelector
+            } else {
+                if (lensFacing == CameraSelector.LENS_FACING_FRONT) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
+            }
+            
+            provider.bindToLifecycle(lifecycleOwner, finalSelector, preview, imageCapture)
+        } catch(e: Exception) {
+            Log.e("Camera", "Use case binding failed", e)
+        }
+    }
+
+    // Update Flash Mode dynamically
+    LaunchedEffect(flashMode) {
+        imageCapture.flashMode = flashMode
+    }
 
     // Gallery picker
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        if (uri != null && myId != null) {
-            isUploading = true
-            scope.launch {
-                val success = StorageHelper.uploadPhoto(context, uri, myId)
-                withContext(Dispatchers.Main) {
-                    isUploading = false
-                    if (success) onPhotoSent()
-                }
-            }
+        if (uri != null) {
+            capturedPhoto = uri
         }
     }
 
@@ -392,113 +444,231 @@ fun CameraScreen(onClose: () -> Unit, onPhotoSent: () -> Unit) {
         return
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = {
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageCapture
-                    )
-                } catch(e: Exception) {
-                    Log.e("Camera", "Use case binding failed", e)
-                }
-                previewView
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Top bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 48.dp, start = 16.dp, end = 16.dp)
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, "Close", tint = Color.White, modifier = Modifier.size(28.dp))
-            }
-        }
-
-        // Bottom controls
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 60.dp)
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Gallery Button
-            IconButton(
-                onClick = {
-                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+    if (capturedPhoto != null) {
+        // --- Review Screen ---
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            AsyncImage(
+                model = capturedPhoto,
+                contentDescription = "Review Photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Top bar
+            Row(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .fillMaxWidth()
+                    .padding(top = 48.dp, start = 16.dp, end = 16.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Default.PhotoLibrary, "Gallery", tint = Color.White)
+                IconButton(
+                    onClick = { capturedPhoto = null },
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, "Cancel", tint = Color.White, modifier = Modifier.size(24.dp))
+                }
             }
 
-            // Capture Button
-            Box(
+            // Bottom controls
+            Row(
                 modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.3f))
-                    .clickable(enabled = !isUploading) {
-                        if (myId == null) return@clickable
-                        val photoFile = File(
-                            context.cacheDir,
-                            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(System.currentTimeMillis()) + ".jpg"
-                        )
-                        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-                        val executor = ContextCompat.getMainExecutor(context)
-                        
+                    .fillMaxWidth()
+                    .padding(bottom = 48.dp, start = 16.dp, end = 16.dp)
+                    .align(Alignment.BottomCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Save to Gallery Button
+                Button(
+                    onClick = {
+                        val file = File(capturedPhoto!!.path ?: "")
+                        if (file.exists()) {
+                            val saved = StorageHelper.savePhotoToGallery(context, file)
+                            if (saved) {
+                                Toast.makeText(context, "Saved to Gallery", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Failed to save", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "Already in Gallery", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Icon(Icons.Default.Download, "Save", tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Save", color = Color.White)
+                }
+
+                // Send Button
+                Button(
+                    onClick = {
+                        if (myId == null) return@Button
                         isUploading = true
-                        imageCapture.takePicture(
-                            outputOptions, executor,
-                            object : ImageCapture.OnImageSavedCallback {
-                                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                    scope.launch {
-                                        val uri = Uri.fromFile(photoFile)
-                                        val success = StorageHelper.uploadPhoto(context, uri, myId)
-                                        withContext(Dispatchers.Main) {
-                                            isUploading = false
-                                            if (success) {
-                                                onPhotoSent()
-                                            }
-                                        }
-                                    }
-                                }
-                                override fun onError(exc: ImageCaptureException) {
-                                    isUploading = false
+                        scope.launch {
+                            val success = StorageHelper.uploadPhoto(context, capturedPhoto!!, myId)
+                            withContext(Dispatchers.Main) {
+                                isUploading = false
+                                if (success) {
+                                    Toast.makeText(context, "Photo sent to partner!", Toast.LENGTH_SHORT).show()
+                                    onPhotoSent()
+                                } else {
+                                    Toast.makeText(context, "Failed to send", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        )
+                        }
                     },
-                contentAlignment = Alignment.Center
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                    enabled = !isUploading,
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black, strokeWidth = 2.dp)
+                    } else {
+                        Text("Send", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.Send, "Send", tint = Color.Black, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+    } else {
+        // --- Camera View ---
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Top bar (Close + Flash toggle)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 48.dp, start = 16.dp, end = 16.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isUploading) {
-                    CircularProgressIndicator(color = Color.White)
-                } else {
-                    Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(Color.White))
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, "Close", tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                
+                // Flash Toggle
+                IconButton(
+                    onClick = {
+                        flashMode = when (flashMode) {
+                            ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_ON
+                            ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_AUTO
+                            else -> ImageCapture.FLASH_MODE_OFF
+                        }
+                    },
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                ) {
+                    val flashIcon = when (flashMode) {
+                        ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
+                        ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
+                        else -> Icons.Default.FlashOff
+                    }
+                    val tint = if (flashMode == ImageCapture.FLASH_MODE_ON) Color.Yellow else Color.White
+                    Icon(flashIcon, "Flash", tint = tint, modifier = Modifier.size(24.dp))
                 }
             }
 
-            // Placeholder for symmetry
-            Spacer(modifier = Modifier.size(56.dp))
+            // Bottom controls
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 60.dp, start = 24.dp, end = 24.dp)
+                    .align(Alignment.BottomCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Gallery Button
+                IconButton(
+                    onClick = {
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Default.PhotoLibrary, "Gallery", tint = Color.White)
+                }
+
+                // Capture Button
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.3f))
+                        .clickable(enabled = !isUploading) {
+                            if (myId == null) return@clickable
+                            val photoFile = File(
+                                context.cacheDir,
+                                java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(System.currentTimeMillis()) + ".jpg"
+                            )
+                            
+                            // Apply metadata to prevent mirror effect on front camera
+                            val metadata = ImageCapture.Metadata().apply {
+                                isReversedHorizontal = (lensFacing == CameraSelector.LENS_FACING_FRONT)
+                            }
+                            val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile)
+                                .setMetadata(metadata)
+                                .build()
+                            
+                            val executor = ContextCompat.getMainExecutor(context)
+                            
+                            isUploading = true
+                            try {
+                                imageCapture.takePicture(
+                                    outputOptions, executor,
+                                    object : ImageCapture.OnImageSavedCallback {
+                                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                            isUploading = false
+                                            capturedPhoto = Uri.fromFile(photoFile)
+                                        }
+                                        override fun onError(exc: ImageCaptureException) {
+                                            isUploading = false
+                                        }
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                isUploading = false
+                                Toast.makeText(context, "Failed to capture photo", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(Color.White))
+                    }
+                }
+
+                // Flip Camera Button
+                IconButton(
+                    onClick = {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
+                            CameraSelector.LENS_FACING_BACK
+                        } else {
+                            CameraSelector.LENS_FACING_FRONT
+                        }
+                    },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Default.Autorenew, "Flip Camera", tint = Color.White)
+                }
+            }
         }
     }
 }
