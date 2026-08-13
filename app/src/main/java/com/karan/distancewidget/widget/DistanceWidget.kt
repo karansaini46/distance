@@ -67,6 +67,10 @@ class DistanceWidget : AppWidgetProvider() {
             val data = androidx.work.workDataOf("force_fresh" to true)
             val oneTime = OneTimeWorkRequestBuilder<LocationWorker>().setInputData(data).build()
             WorkManager.getInstance(context).enqueue(oneTime)
+            
+            // Instantly trigger an update so the widget shows the "loading..." state right away
+            // and fetches the partner's latest location immediately.
+            requestUpdate(context)
         }
     }
 
@@ -75,13 +79,18 @@ class DistanceWidget : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
-        appWidgetIds.forEach { id -> updateWidget(context, appWidgetManager, id) }
+        // Consume the force flag once for all widgets
+        val serverFresh = forceServerFetch
+        forceServerFetch = false
+        
+        appWidgetIds.forEach { id -> updateWidget(context, appWidgetManager, id, serverFresh) }
     }
 
     private fun updateWidget(
         context: Context,
         manager: AppWidgetManager,
-        widgetId: Int
+        widgetId: Int,
+        serverFresh: Boolean
     ) {
         val myId           = Prefs.getUserId(context)
         val myInitial      = Prefs.getMyInitial(context)
@@ -112,10 +121,6 @@ class DistanceWidget : AppWidgetProvider() {
         // ── Async: fetch both locations then update ────────────────────
         scope.launch {
             try {
-                // Consume the force flag — bypass Firebase cache if user tapped refresh
-                val serverFresh = forceServerFetch
-                forceServerFetch = false
-
                 val myLoc      = FirebaseHelper.getLocation(myId, forceServer = serverFresh)
                 val partnerLoc = FirebaseHelper.getLocation(partnerId, forceServer = serverFresh)
 
