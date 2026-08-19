@@ -16,6 +16,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -79,6 +80,11 @@ class StoryActivity : ComponentActivity() {
                 StoryApp(onClose = { finish() })
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        androidx.core.app.NotificationManagerCompat.from(this).cancelAll()
     }
 }
 
@@ -287,7 +293,8 @@ fun StoryScreen(onClose: () -> Unit, onOpenCamera: () -> Unit) {
                 Text(
                     text = comment.text,
                     color = Color.White,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
                     modifier = Modifier
                         .padding(vertical = 4.dp)
                         .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
@@ -642,7 +649,8 @@ fun CameraScreen(onClose: () -> Unit, onPhotoSent: () -> Unit) {
                                 isUploading = false
                                 Toast.makeText(context, "Failed to capture photo", Toast.LENGTH_SHORT).show()
                             }
-                        },
+                        }
+                        .animateContentSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isUploading) {

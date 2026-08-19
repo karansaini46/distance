@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -73,29 +74,36 @@ fun HomeScreen(
             .verticalScroll(rememberScrollState())
     ) {
         // ─── TOP HEADER ────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "Distance",
-                    color = TextPrimary,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Stay close, no matter the miles",
-                    color = TextMuted,
-                    fontSize = 13.sp
-                )
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "Distance",
+                        color = TextPrimary,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    )
+                    Text(
+                        "Stay close, no matter the miles",
+                        color = TextMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, "Settings", tint = TextSecondary)
+                    }
+                }
             }
-            IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, "Settings", tint = TextSecondary)
-            }
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
         }
 
         Spacer(Modifier.height(8.dp))
@@ -104,8 +112,8 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .padding(horizontal = 24.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
@@ -114,7 +122,7 @@ fun HomeScreen(
                         )
                     )
                 )
-                .padding(28.dp),
+                .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -128,7 +136,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(52.dp)
                             .clip(CircleShape)
-                            .background(AccentViolet),
+                            .background(AccentViolet)
+                            .border(1.5.dp, Color.White, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -162,11 +171,25 @@ fun HomeScreen(
                         "❓"
                     }
 
-                    Text(
-                        displayEmoji,
-                        fontSize = 28.sp,
-                        modifier = Modifier.scale(heartScale)
-                    )
+                    Box(
+                        modifier = Modifier.size(64.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(AccentRose.copy(alpha = 0.15f), Color.Transparent)
+                                    )
+                                )
+                        )
+                        Text(
+                            displayEmoji,
+                            fontSize = 28.sp,
+                            modifier = Modifier.scale(heartScale)
+                        )
+                    }
 
                     Spacer(Modifier.width(16.dp))
 
@@ -175,7 +198,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(52.dp)
                             .clip(CircleShape)
-                            .background(AccentRose),
+                            .background(AccentRose)
+                            .border(1.5.dp, Color.White, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -221,30 +245,40 @@ fun HomeScreen(
                     }
                     Text(lastSeen, color = TextMuted, fontSize = 13.sp)
                 } else {
-                    Text(
-                        "Syncing...",
-                        color = TextMuted,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Syncing...",
+                            color = TextMuted,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = TextMuted,
+                            strokeWidth = 1.5.dp
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Waiting for location data",
                         color = TextMuted,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        lineHeight = 22.sp
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(32.dp))
 
         // ─── QUICK ACTIONS ─────────────────────────────────────────
         Text(
-            "Quick Actions",
+            "QUICK ACTIONS",
             color = TextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.8.sp,
             modifier = Modifier.padding(horizontal = 24.dp)
         )
 
@@ -253,7 +287,7 @@ fun HomeScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Chat
@@ -281,14 +315,15 @@ fun HomeScreen(
             )
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(32.dp))
 
         // ─── PARTNER STATUS CARD ───────────────────────────────────
         Text(
-            "Connection",
+            "CONNECTION",
             color = TextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.8.sp,
             modifier = Modifier.padding(horizontal = 24.dp)
         )
 
@@ -297,11 +332,13 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color.White.copy(alpha = 0.06f))
+                .padding(horizontal = 24.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
                 .clickable { onOpenChat() }
-                .padding(20.dp)
+                .animateContentSize()
+                .padding(24.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Status indicator
@@ -315,7 +352,7 @@ fun HomeScreen(
                     Text(partnerInitial, color = AccentRose, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 }
 
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -375,10 +412,12 @@ private fun QuickActionCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Brush.verticalGradient(gradient))
+            .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(20.dp)
+            .animateContentSize()
+            .padding(24.dp)
     ) {
         Column {
             Box(

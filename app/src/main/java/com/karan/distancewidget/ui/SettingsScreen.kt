@@ -19,11 +19,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.*
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +48,13 @@ import com.karan.distancewidget.ui.components.GlassCard
 import com.karan.distancewidget.ui.theme.*
 import kotlinx.coroutines.launch
 
+sealed class LocationButtonState {
+    object Idle : LocationButtonState()
+    object Loading : LocationButtonState()
+    data class Success(val lat: Double, val lng: Double, val ts: Long) : LocationButtonState()
+    data class Error(val message: String) : LocationButtonState()
+}
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
     val context = LocalContext.current
@@ -59,7 +68,9 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
     var myLocation by remember { mutableStateOf<LocationData?>(null) }
     var partnerLocation by remember { mutableStateOf<LocationData?>(null) }
     val partnerId = Prefs.getPartnerId(context)
-    var isPinging by remember { mutableStateOf(false) }
+    var locationState by remember { 
+        mutableStateOf<LocationButtonState>(LocationButtonState.Idle) 
+    }
 
     LaunchedEffect(Unit) {
         myLocation = FirebaseHelper.getLocation(userId)
@@ -126,12 +137,24 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = TextPrimary)
+            Column {
+                Row(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Settings",
+                        color = TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    )
                 }
-                Spacer(Modifier.width(8.dp))
-                Text("Settings", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
             }
 
             Spacer(Modifier.height(8.dp))
@@ -139,9 +162,9 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
             // Identity
             GlassCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Running as", color = TextMuted, fontSize = 14.sp)
+                    Text("RUNNING AS", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.8.sp)
                     Spacer(Modifier.weight(1f))
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(StatusOk))
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(StatusOk))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         userId.replaceFirstChar { it.uppercase() },
@@ -153,64 +176,162 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
             // Location Status
             GlassCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = "Location",
-                        tint = if (myLocation != null) StatusOk else StatusWarn,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
+                    val activeLoc = partnerLocation ?: myLocation
+                    IconButton(
+                        onClick = {
+                            activeLoc?.let { loc ->
+                                val uri = Uri.parse("https://www.google.com/maps?q=${loc.lat},${loc.lng}")
+                                val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                    setPackage("com.google.android.apps.maps")
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                val finalIntent = if (mapIntent.resolveActivity(context.packageManager) != null) {
+                                    mapIntent
+                                } else {
+                                    Intent(Intent.ACTION_VIEW, uri).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                }
+                                try { context.startActivity(finalIntent) } catch (_: Exception) {}
+                            }
+                        },
+                        enabled = activeLoc != null,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = "Open location in Google Maps",
+                            tint = if (myLocation != null) StatusOk else StatusWarn,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Location Sync", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        val statusText = if (isPinging) {
-                            "Pinging partner's location..."
-                        } else if (myLocation != null) {
+                        val statusText = if (myLocation != null) {
                             if (partnerLocation != null) {
                                 val km = FirebaseHelper.distanceKm(myLocation!!, partnerLocation!!)
-                                "Your location is live · ${FirebaseHelper.formatDistance(km)} apart"
+                                "${FirebaseHelper.formatDistance(km)} • ${FirebaseHelper.timeAgo(partnerLocation!!.ts)}"
                             } else {
                                 "Your location is live · partner not synced yet"
                             }
                         } else {
                             "Location not synced yet"
                         }
-                        Text(statusText, color = TextMuted, fontSize = 12.sp)
-                    }
-                    if (isPinging) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = AccentRose,
-                            strokeWidth = 2.dp
-                        )
-                    } else if (partnerLocation != null) {
-                        IconButton(onClick = {
-                            val uri = "geo:${partnerLocation!!.lat},${partnerLocation!!.lng}?q=${partnerLocation!!.lat},${partnerLocation!!.lng}"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-                            intent.setPackage("com.google.android.apps.maps")
-                            try {
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // Fallback if Google Maps app is not installed
-                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${partnerLocation!!.lat},${partnerLocation!!.lng}"))
-                                try { context.startActivity(browserIntent) } catch (_: Exception) {}
-                            }
-                        }) {
-                            Icon(Icons.Default.LocationOn, contentDescription = "Open in Maps", tint = AccentRose)
+                        Text(statusText, color = TextMuted, fontSize = 12.sp, lineHeight = 22.sp)
+                        
+                        if (locationState is LocationButtonState.Error) {
+                            Text((locationState as LocationButtonState.Error).message, color = TextMuted, fontSize = 12.sp, lineHeight = 22.sp)
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (myLocation != null) StatusOk else StatusWarn)
-                        )
+                    }
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (partnerLocation != null) {
+                            IconButton(onClick = {
+                                val uri = android.net.Uri.parse(
+                                    "https://www.google.com/maps?q=${partnerLocation!!.lat},${partnerLocation!!.lng}"
+                                )
+                                val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                    setPackage("com.google.android.apps.maps")
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                val finalIntent = if (mapIntent.resolveActivity(context.packageManager) != null) {
+                                    mapIntent
+                                } else {
+                                    Intent(Intent.ACTION_VIEW, uri).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                }
+                                try { context.startActivity(finalIntent) } catch (e: Exception) {}
+                            }) {
+                                Icon(Icons.Default.Map, contentDescription = "Open Map", tint = TextSecondary)
+                            }
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            when (locationState) {
+                                is LocationButtonState.Loading -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = AccentRose,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("Pinging partner...", color = TextMuted, fontSize = 13.sp)
+                                }
+                                is LocationButtonState.Success -> {
+                                    IconButton(onClick = { /* keep same padding as regular button */ }) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = "Success", tint = StatusOk)
+                                    }
+                                }
+                                else -> {
+                                    IconButton(onClick = {
+                                        if (locationState is LocationButtonState.Loading) return@IconButton
+                                        if (partnerId.isNullOrEmpty()) return@IconButton
+                                        locationState = LocationButtonState.Loading
+                                        
+                                        val pingTime = System.currentTimeMillis()
+                                        
+                                        settingsScope.launch {
+                                            // Step 1: ping the partner
+                                            FirebaseHelper.pingPartnerForLocation(partnerId)
+                                            
+                                            // Step 2: poll Firebase every 2 seconds for up to 20 seconds
+                                            // waiting for a location with timestamp NEWER than pingTime
+                                            var found = false
+                                            repeat(10) { attempt ->
+                                                if (found) return@repeat
+                                                
+                                                delay(2000L)
+                                                
+                                                val loc = FirebaseHelper.getLocation(partnerId, forceServer = true)
+                                                if (loc != null && loc.ts > pingTime) {
+                                                    found = true
+                                                    locationState = LocationButtonState.Success(loc.lat, loc.lng, loc.ts)
+                                                    
+                                                    // Step 3: open Google Maps with the live coordinates immediately
+                                                    val uri = android.net.Uri.parse(
+                                                        "https://www.google.com/maps?q=${loc.lat},${loc.lng}"
+                                                    )
+                                                    val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                                        setPackage("com.google.android.apps.maps")
+                                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                    }
+                                                    // Fallback to browser if Maps not installed
+                                                    val finalIntent = if (mapIntent.resolveActivity(context.packageManager) != null) {
+                                                        mapIntent
+                                                    } else {
+                                                        Intent(Intent.ACTION_VIEW, uri).apply {
+                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                        }
+                                                    }
+                                                    try { context.startActivity(finalIntent) } catch (e: Exception) {}
+                                                    
+                                                    // Reset button after 3 seconds
+                                                    delay(3000L)
+                                                    locationState = LocationButtonState.Idle
+                                                }
+                                            }
+                                            
+                                            if (!found) {
+                                                locationState = LocationButtonState.Error("Couldn't get live location. Partner's app may be closed.")
+                                                delay(4000L)
+                                                locationState = LocationButtonState.Idle
+                                            }
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.MyLocation, contentDescription = "Ping Partner", tint = AccentRose)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // Widget Customization
             GlassCard {
-                Text("Widget UI Customization", color = TextMuted, fontSize = 12.sp)
+                Text("WIDGET UI CUSTOMIZATION", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.8.sp)
                 Spacer(Modifier.height(16.dp))
 
                 Row(
@@ -233,7 +354,7 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
                     )
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Text("Widget Transparency (${widgetOpacity.toInt()}%)", color = TextPrimary, fontSize = 15.sp)
                 Slider(
@@ -254,7 +375,7 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
 
             // Permissions
             GlassCard {
-                Text("Permissions", color = TextMuted, fontSize = 12.sp)
+                Text("PERMISSIONS", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.8.sp)
                 Spacer(Modifier.height(12.dp))
 
                 PermissionRow(
@@ -270,7 +391,7 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
                     }
                 )
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
                 PermissionRow(
                     label = "Location (background / always)",
@@ -285,13 +406,13 @@ fun SettingsScreen(onBack: () -> Unit, onReset: () -> Unit) {
 
             // Battery Warning
             if (!batteryIgnored) {
-                GlassCard(modifier = Modifier.border(1.dp, StatusWarn.copy(alpha = 0.4f), RoundedCornerShape(20.dp))) {
+                GlassCard(modifier = Modifier.border(0.5.dp, StatusWarn.copy(alpha = 0.4f), RoundedCornerShape(16.dp))) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("⚡", fontSize = 18.sp)
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Battery optimisation is ON", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("This will pause location syncing. Tap Fix.", color = TextSecondary, fontSize = 12.sp)
+                            Text("Battery optimisation is ON", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("This will pause location syncing. Tap Fix.", color = TextSecondary, fontSize = 12.sp, lineHeight = 22.sp)
                         }
                         Spacer(Modifier.width(8.dp))
                         TextButton(onClick = { openBatterySettings(context) }) {
@@ -326,9 +447,9 @@ private fun PermissionRow(label: String, granted: Boolean, onFix: () -> Unit) {
             imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Warning,
             contentDescription = null,
             tint = if (granted) StatusOk else StatusWarn,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Text(label, color = TextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
         if (!granted) {
             TextButton(onClick = onFix, contentPadding = PaddingValues(0.dp)) {

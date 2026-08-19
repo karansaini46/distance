@@ -19,10 +19,10 @@ fun GlassCard(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.06f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-            .padding(20.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            .padding(24.dp)
     ) {
         content()
     }

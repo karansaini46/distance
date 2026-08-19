@@ -87,22 +87,24 @@ fun SetupScreen(onSetupComplete: () -> Unit) {
                     .scale(scale)
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(24.dp))
 
             Text(
                 text       = "Whose phone is this?",
                 color      = TextPrimary,
-                fontSize   = 26.sp,
+                fontSize   = 28.sp,
                 fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5).sp,
                 textAlign  = TextAlign.Center
             )
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             Text(
                 text      = "Set once. Never asked again.",
                 color     = TextMuted,
-                fontSize  = 14.sp,
+                fontSize  = 15.sp,
+                lineHeight = 22.sp,
                 textAlign = TextAlign.Center
             )
 

@@ -11,6 +11,8 @@ import com.karan.distancewidget.data.db.MessageEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -19,6 +21,9 @@ class ChatRepository(private val context: Context) {
     private val db = ChatDatabase.getDatabase(context)
     private val messageDao = db.messageDao()
     private val firebaseDb = FirebaseDatabase.getInstance().reference
+
+    private val _partnerSeenAtFlow = MutableStateFlow(0L)
+    val partnerSeenAtFlow = _partnerSeenAtFlow.asStateFlow()
 
     fun getLocalMessages(): Flow<List<MessageEntity>> {
         return messageDao.getAllMessages()
@@ -99,6 +104,31 @@ class ChatRepository(private val context: Context) {
 
                 override fun onCancelled(error: DatabaseError) {}
             })
+            
+        // Listen for partner's seen timestamp
+        firebaseDb.child("seen").child(convId).child(partnerId)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val seenAt = snapshot.getValue(Long::class.java) ?: 0L
+                    _partnerSeenAtFlow.value = seenAt
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+    }
+
+    fun markAsRead(myId: String, partnerId: String) {
+        val convId = getConversationId(myId, partnerId)
+        firebaseDb.child("seen").child(convId).child(myId).setValue(System.currentTimeMillis())
+    }
+
+    suspend fun deleteChat(myId: String, partnerId: String) {
+        val convId = getConversationId(myId, partnerId)
+        // Delete from Firebase
+        firebaseDb.child("chats").child(convId).removeValue().await()
+        firebaseDb.child("seen").child(convId).removeValue().await()
+        
+        // Delete locally
+        messageDao.deleteAll()
     }
 
     private fun getConversationId(id1: String, id2: String): String {

@@ -5,9 +5,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,9 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -34,12 +37,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.IntOffset
@@ -70,6 +75,9 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
     var myLocation by remember { mutableStateOf<LocationData?>(null) }
 
     val messages by chatRepo.getLocalMessages().collectAsState(initial = emptyList())
+    val partnerSeenAt by chatRepo.partnerSeenAtFlow.collectAsState()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -93,6 +101,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
     }
 
     LaunchedEffect(messages.size) {
+        chatRepo.markAsRead(myId, partnerId)
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
@@ -131,15 +140,16 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
             color = BgSurface,
             shadowElevation = 8.dp
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = TextPrimary)
-                }
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+                    }
 
                 Box(
                     modifier = Modifier
@@ -158,15 +168,25 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
                         partnerId.replaceFirstChar { it.uppercase() },
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize = 17.sp,
+                        letterSpacing = (-0.5).sp
                     )
 
-                    val dist = if (myLocation != null && partnerLocation != null) {
+                    if (myLocation != null && partnerLocation != null) {
                         val km = FirebaseHelper.distanceKm(myLocation!!, partnerLocation!!)
-                        if (km <= 0.05) "Together! 💕" else FirebaseHelper.formatDistance(km) + " away"
-                    } else "Syncing..."
-
-                    Text(dist, color = TextSecondary, fontSize = 12.sp)
+                        val dist = if (km <= 0.05) "Together! 💕" else FirebaseHelper.formatDistance(km) + " away"
+                        Text(dist, color = TextSecondary, fontSize = 12.sp)
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Syncing...", color = TextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.width(4.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = TextSecondary,
+                                strokeWidth = 1.5.dp
+                            )
+                        }
+                    }
                 }
 
                 IconButton(onClick = { context.startActivity(Intent(context, StoryActivity::class.java)) }) {
@@ -183,10 +203,39 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
                 }) {
                     Icon(Icons.Default.ColorLens, "Change Theme", tint = themeColor)
                 }
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Icon(Icons.Default.Delete, "Delete Chat", tint = TextPrimary)
+                }
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Default.Settings, "Settings", tint = TextPrimary)
                 }
             }
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
+        }
+        }
+
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete Chat") },
+                text = { Text("Delete all messages? This can't be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteDialog = false
+                        scope.launch {
+                            chatRepo.deleteChat(myId, partnerId)
+                            onBack()
+                        }
+                    }) {
+                        Text("Delete", color = Color.Red)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // ─── CHAT MESSAGES WITH GESTURE REVEAL ─────────────────────────────────────────
@@ -225,7 +274,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
                         isMine = isMine,
                         isLastInGroup = isLastInGroup,
                         themeColor = themeColor,
-                        swipeOffset = animatedSwipeOffset
+                        swipeOffset = animatedSwipeOffset,
+                        partnerSeenAt = partnerSeenAt
                     )
                     
                     if (isLastInGroup && index != messages.size - 1) {
@@ -299,6 +349,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
                     modifier = Modifier
                         .padding(bottom = 2.dp)
                         .size(48.dp)
+                        .shadow(4.dp, CircleShape)
                         .clip(CircleShape)
                         .background(themeColor)
                         .clickable {
@@ -309,7 +360,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onBack: () -> Unit) {
                                     chatRepo.sendMessage(myId, partnerId, text)
                                 }
                             }
-                        },
+                        }
+                        .animateContentSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isTyping) {
@@ -329,7 +381,8 @@ fun MessageBubble(
     isMine: Boolean,
     isLastInGroup: Boolean,
     themeColor: Color,
-    swipeOffset: Float
+    swipeOffset: Float,
+    partnerSeenAt: Long
 ) {
     val formatter = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     val timeString = formatter.format(Date(message.timestamp))
@@ -354,6 +407,7 @@ fun MessageBubble(
             text = timeString,
             color = TextSecondary,
             fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .offset { IntOffset((80.dp.toPx() * (1f - revealProgress)).roundToInt(), 0) }
@@ -378,6 +432,12 @@ fun MessageBubble(
                             bottomEnd = bottomEnd
                         )
                     )
+                    .then(if (!isMine) Modifier.border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(
+                            topStart = topStart,
+                            topEnd = topEnd,
+                            bottomStart = bottomStart,
+                            bottomEnd = bottomEnd
+                        )) else Modifier)
                     .background(if (isMine) themeColor else BgCard)
                     .padding(
                         horizontal = if (message.isPhoto) 4.dp else 16.dp,
@@ -393,14 +453,26 @@ fun MessageBubble(
                             .heightIn(min = 150.dp, max = 250.dp)
                             .widthIn(min = 150.dp, max = 250.dp)
                             .clip(RoundedCornerShape(16.dp))
+                            .border(0.5.dp, Color.White, RoundedCornerShape(16.dp))
                     )
                 } else {
-                    Text(
-                        text = message.text,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = message.text,
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        )
+                        if (isMine) {
+                            val seen = message.timestamp <= partnerSeenAt
+                            Text(
+                                text = if (seen) "✓✓" else "✓",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

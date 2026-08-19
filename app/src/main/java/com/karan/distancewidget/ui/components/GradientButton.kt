@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -30,17 +31,17 @@ fun GradientButton(
         modifier = modifier
             .fillMaxWidth(0.72f)
             .height(56.dp)
-            .shadow(12.dp, RoundedCornerShape(18.dp), ambientColor = gradientColors.first())
-            .clip(RoundedCornerShape(18.dp))
+            .shadow(12.dp, RoundedCornerShape(16.dp), ambientColor = gradientColors.first())
+            .clip(RoundedCornerShape(16.dp))
             .background(Brush.horizontalGradient(gradientColors))
             .clickable(onClick = onClick)
+            .animateContentSize()
     ) {
         Text(
             text       = text,
             color      = Color.White,
             fontSize   = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.5.sp
+            fontWeight = FontWeight.SemiBold
         )
     }
 }

@@ -18,14 +18,14 @@ object WorkerScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        // Existing location worker (keep as-is)
-        val locationRequest = PeriodicWorkRequestBuilder<LocationWorker>(15, TimeUnit.MINUTES)
+        // Location worker (8 minute interval)
+        val locationRequest = PeriodicWorkRequestBuilder<LocationWorker>(8, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
 
-        // New photo sync worker
-        val photoRequest = PeriodicWorkRequestBuilder<com.karan.distancewidget.worker.PhotoSyncWorker>(15, TimeUnit.MINUTES)
+        // Photo sync worker (8 minute interval)
+        val photoRequest = PeriodicWorkRequestBuilder<com.karan.distancewidget.worker.PhotoSyncWorker>(8, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
